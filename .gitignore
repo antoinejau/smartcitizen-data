@@ -1,6 +1,6 @@
 # Remove
 data/export/*
-data/raw/*.csv
+data/raw/*
 data/processed/20*/
 data/reports/*
 data/interim/development/*
@@ -33,6 +33,10 @@ notebooks/cheatsheet.ipynb
 # MAC stuff
 */.DS_Store
 .DS_Store
+
+# Others
+.vscode/
+__pycache__/
 
 # Byte-compiled / optimized / DLL files
 *__pycache__/*
@@ -134,3 +138,6 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+# pytest
+.pytest_cache/

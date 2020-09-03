@@ -1,52 +1,123 @@
-from os.path import join
 import yaml
-
 from .dictmerge import dict_fmerge
-from pandas import read_json
-from os import pardir, environ
-from os.path import join, abspath, dirname
+from os import pardir, environ, name, makedirs
+from os.path import join, abspath, dirname, expanduser, exists
+import os
+from shutil import copyfile
 
 def get_paths():
 
-    try:
-    
-        _paths = dict()
-        _paths['rootDirectory'] = abspath(abspath(join(dirname(__file__), pardir, pardir)))
-        _paths['dataDirectory'] = join(_paths['rootDirectory'], 'data')
-        _paths['processedDirectory'] = join(_paths['dataDirectory'], 'processed')
-        _paths['interimDirectory'] = join(_paths['dataDirectory'], 'interim')
-        _paths['modelDirectory'] = join(_paths['rootDirectory'], 'models')
-        
-        load_env(join(_paths['rootDirectory'], '.env'))
+    # Check if windows
+    _mswin = name == "nt"
+    # Get user_home
+    _user_home = expanduser("~")
 
-        if 'inventory_path' in environ.keys():
-            _paths['inventoryDirectory'] = environ['inventory_path']
-        
-        if 'tools_path' in environ.keys(): 
-            _paths['toolsDirectory'] = environ['tools_path']
-    except:
-        return None
-   
+    # Get .config dir
+    if _mswin:
+        _cdir = environ["APPDATA"]
+    elif 'XDG_CONFIG_HOME' in environ:
+        _cdir = environ['XDG_CONFIG_HOME']
     else:
-        return _paths
+        _cdir = join(expanduser("~"), '.config')
+
+    # Get .cache dir - maybe change it if found in config.json
+    if _mswin:
+        _ddir = environ["APPDATA"]
+    elif 'XDG_CACHE_HOME' in environ:
+        _ddir = environ['XDG_CACHE_HOME']
+    else:
+        _ddir = join(expanduser("~"), '.cache')
+
+    # Set config and cache (data) dirs
+    _sccdir = join(_cdir, 'scdata')
+    _scddir = join(_ddir, 'scdata')
+
+    makedirs(_sccdir, exist_ok=True)
+    makedirs(_scddir, exist_ok=True)
+
+    _paths = dict()
+
+    _paths['config'] = _sccdir
+    _paths['data'] = _scddir
+
+    # Auxiliary folders
+    
+    # - Processed data
+    _paths['processed'] = join(_paths['data'], 'processed')
+    makedirs(_paths['processed'], exist_ok=True)
+    
+    # - Internal data: blueprints and calibrations
+    _paths['interim'] = join(_paths['data'], 'interim')
+    makedirs(_paths['interim'], exist_ok=True)
+    # Check for blueprints and calibrations
+    # Find the path to the interim folder
+    _dir = dirname(__file__)
+    _idir = join(_dir, 'interim')
+    if not exists(join(_paths['interim'], 'blueprints.yaml')): create_blueprints(_idir, _paths['interim'])
+    if not exists(join(_paths['interim'], 'calibrations.yaml')): create_calibrations(_idir, _paths['interim'])
+    
+    # - Models and local tests
+    _paths['models'] = join(_paths['data'], 'models')
+    makedirs(_paths['models'], exist_ok=True)
+    
+    # - Exports
+    _paths['export'] = join(_paths['data'], 'export')
+    makedirs(_paths['export'], exist_ok=True)
+    
+    # - Raw
+    _paths['raw'] = join(_paths['data'], 'raw')
+    makedirs(_paths['raw'], exist_ok=True)
+    
+    # - Reports
+    _paths['reports'] = join(_paths['data'], 'reports')
+    makedirs(_paths['reports'], exist_ok=True)
+    
+    # - Uploads
+    _paths['uploads'] = join(_paths['data'], 'uploads')
+    makedirs(_paths['uploads'], exist_ok=True)
+    
+    # Check for uploads
+    _example_uploads = ['example_upload_1.json', 'example_zenodo_upload.yaml']
+    _udir = join(_dir, 'uploads')
+    for item in _example_uploads:
+        s = join(_udir, item)
+        d = join(_paths['uploads'], item)
+        if not exists(d): copyfile(s, d)
+    
+    # Inventory (normally not used by user)
+    _paths['inventory'] = ''
+
+    return _paths
 
 def load_env(env_file):
     try:
         with open(env_file) as f:
             for line in f:
+                # Ignore empty lines or lines that start with #
                 if line.startswith('#') or not line.strip(): continue
                 # Load to local environ
                 key, value = line.strip().split('=', 1)
-                environ[key] = value  
+                environ[key] = value
+    
     except FileNotFoundError:
-        print('.env file not found in root directory')
+        print('.env file not found')
+        return False
+    else:
+        return True
 
-def load_blueprints(paths = get_paths()):
+def create_blueprints(path_to_pkg_data, path_to_interim):
+    with open(join(path_to_pkg_data, 'blueprints.yaml'), 'r') as bi:
+        blueprints = yaml.load(bi, Loader=yaml.SafeLoader)
+
+    with open(join(path_to_interim, 'blueprints.yaml'), 'w') as bo: 
+        yaml.dump(blueprints, bo)
+
+def load_blueprints(paths):
     
     try:
-        blueprints_path = join(paths['interimDirectory'], 'blueprints.yaml')
-        with open(blueprints_path, 'r') as blueprints_yaml:
-            blueprints = yaml.load(blueprints_yaml, Loader=yaml.SafeLoader)
+        blueprints_path = join(paths['interim'], 'blueprints.yaml')
+        with open(blueprints_path, 'r') as b:
+            blueprints = yaml.load(b, Loader=yaml.SafeLoader)
     except FileNotFoundError:
         print('Problem loading blueprints file')
         return None
@@ -60,7 +131,7 @@ def load_blueprints(paths = get_paths()):
 
 # TODO
 def add_blueprint(**kwargs):
-    print ('not yet')
+    print ('Not yet')
 
 def get_current_blueprints():
     from scdata._config import config
@@ -68,26 +139,45 @@ def get_current_blueprints():
 
     return list(config.blueprints.keys())
 
+def create_calibrations(path_to_pkg_data, path_to_interim):
+    with open(join(path_to_pkg_data, 'calibrations.yaml'), 'r') as ci:
+        calibrations = yaml.load(ci, Loader=yaml.SafeLoader)
+    
+    with open(join(path_to_interim, 'calibrations.yaml'), 'w') as co: 
+        yaml.dump(calibrations, co)
+
 def load_calibrations(paths):
     '''
-        The calibrations are meant for alphasense's 4 electrode sensors.
-        This file follows the next structure:
-        {
-            "Target 1": "Pollutant 1", 
-            "Target 2": "Pollutant 2", 
-            "Serial No": "XXXX", 
-            "Sensitivity 1": "Pollutant 1 sensitivity in nA/ppm", 
-            "Sensitivity 2": "Pollutant 2 sensitivity in nA/ppm", 
-            "Zero Current": "in nA", 
-            "Aux Zero Current": "in nA"}
-        }
+        Loads calibrations from yaml file. 
+        The calibrations are meant for alphasense's 4 electrode sensors. The yaml file contains:
+        'SENSOR_ID':
+            sensor_type: ''
+            we_electronic_zero_mv: ''
+            we_sensor_zero_mv: ''
+            we_total_zero_mv: ''
+            ae_electronic_zero_mv: ''
+            ae_sensor_zero_mv: ''
+            ae_total_zero_mv: ''
+            we_sensitivity_na_ppb: ''
+            we_cross_sensitivity_no2_na_ppb: ''
+            pcb_gain: ''
+            we_sensitivity_mv_ppb: ''
+            we_cross_sensitivity_no2_mv_ppb: ''
+        Parameters
+        ----------
+            path: String
+                yaml file path
+        Returns
+        ---------
+            Dictionary containing calibrations otherwise None
     '''
     try:
-        caldata_path = join(paths['interimDirectory'], 'calibrations.json')
-        caldf = read_json(caldata_path, orient='columns', lines = True)
-        caldf.index = caldf['serial_no']
+        calspath = join(paths['interim'], 'calibrations.yaml')
+        
+        with open(calspath, 'r') as c:
+            cals = yaml.load(c, Loader = yaml.SafeLoader)
     except FileNotFoundError:
-        print('Problem loading blueprints file')
+        print('Problem loading calibrations file')
         return None
     else:   
-        return caldf
+        return cals
